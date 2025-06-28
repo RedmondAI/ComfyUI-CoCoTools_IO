@@ -36,7 +36,10 @@ class saver:
                 "exr_compression": (["none", "zip", "zips", "rle", "pxr24", "b44", "b44a", "dwaa", "dwab"], 
                                   {"default": "zips"}),
                 "quality": ("INT", {"default": 95, "min": 1, "max": 100}),
-                "save_as_grayscale": ("BOOLEAN", {"default": False})
+                "save_as_grayscale": ("BOOLEAN", {"default": False}),
+                "path_template": ("STRING", {"default": ""}),
+                "token": ("STRING", {"default": ""}),
+                "sequence_padding": ("INT", {"default": 4, "min": 1, "max": 10})
             },
             "hidden": {
                 "prompt": "PROMPT",
@@ -219,9 +222,20 @@ class saver:
                 return new_path
             counter += 1
 
+    def resolve_template(self, template: str, context: Dict[str, str]) -> str:
+        """Resolve a path template using the provided context mapping"""
+        try:
+            return template.format(**context)
+        except KeyError as e:
+            # Leave unresolved placeholders intact for easier debugging
+            missing = e.args[0]
+            # Replace missing key with empty string to avoid unresolved braces
+            return template.replace(f"{{{missing}}}", context.get(missing, ""))
+
     def save_images(self, images, file_path, filename, file_type, bit_depth,
                    quality=95, save_as_grayscale=False, use_versioning=True,
-                   version=1, prompt=None, extra_pnginfo=None, exr_compression="zips"):
+                   version=1, prompt=None, extra_pnginfo=None, exr_compression="zips",
+                   path_template="", token="", sequence_padding=4):
         """Main save function with optimized pipeline"""
         try:
             # Validate inputs
@@ -229,25 +243,58 @@ class saver:
             file_type = file_type.lower()
             bit_depth = self.validate_bit_depth(file_type, bit_depth)
             
-            # Build base path
-            if file_path:
-                full_path = os.path.join(self.output_dir, file_path) if not os.path.isabs(file_path) else file_path
-                os.makedirs(full_path, exist_ok=True)
-                base_path = os.path.join(full_path, filename)
+            # Gather pipeline context variables
+            env = os.environ
+            # Allow VERSION env var to override provided version when numeric
+            if env.get("VERSION", "").isdigit():
+                version = int(env["VERSION"])
+            context = {
+                "project": env.get("PROJECT", ""),
+                "shot": env.get("SHOT", ""),
+                "task": env.get("TASK_NAME", env.get("TASK", "")),
+                "version": f"v{version:03d}",
+                "token": token or env.get("TOKEN", ""),
+                "filename": filename,
+            }
+
+            # Determine base path either from explicit file_path or path_template
+            # Auto-generate template if none provided but pipeline context exists
+            if not path_template and any([context["project"], context["shot"], context["task"]]):
+                # default template uses frame placeholder for sequences
+                path_template = "{project}/{shot}/{task}/{version}/{filename}_{frame}"
+
+            if path_template:
+                resolved = self.resolve_template(path_template, context)
+                # If template path is not absolute, anchor it to output_dir
+                base_path = resolved if os.path.isabs(resolved) else os.path.join(self.output_dir, resolved)
             else:
-                base_path = os.path.join(self.output_dir, filename)
+                if file_path:
+                    full_path = os.path.join(self.output_dir, file_path) if not os.path.isabs(file_path) else file_path
+                    base_path = os.path.join(full_path, filename)
+                else:
+                    base_path = os.path.join(self.output_dir, filename)
+
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(base_path), exist_ok=True)
             
-            # Add version string
-            version_str = f"_v{version:03d}" if use_versioning and version >= 0 else ""
+            # Add version string to base path when not using template with {version}
+            if "{version}" not in path_template and use_versioning and version >= 0:
+                base_path = f"{base_path}_v{version:03d}"
             
             # Process each image
             for i, img_tensor in enumerate(images):
                 # Prepare image (all formats start from float32 [0,1])
                 img_np = self.prepare_image(img_tensor, save_as_grayscale)
                 
-                # Build output path
-                frame_str = f"_{i}" if len(images) > 1 else ""
-                out_path = f"{base_path}{version_str}{frame_str}.{file_type}"
+                # Build output path with frame handling
+                if "{frame" in path_template:
+                    frame_val = f"{i:0{sequence_padding}d}"
+                    context["frame"] = frame_val
+                    out_base = self.resolve_template(base_path, context) if path_template else base_path
+                    out_path = f"{out_base}.{file_type}"
+                else:
+                    frame_str = f"_{i:0{sequence_padding}d}" if len(images) > 1 else ""
+                    out_path = f"{base_path}{frame_str}.{file_type}"
                 out_path = self.get_unique_filepath(out_path)
                 
                 # Save based on format
