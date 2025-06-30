@@ -52,7 +52,7 @@ class AutoNameSaver:
     RETURN_TYPES = ()
     FUNCTION = "save_images"
     OUTPUT_NODE = True
-    CATEGORY = "COCO Tools/Savers"
+    CATEGORY = "redmond3d/Savers"
 
     def __init__(self):
         self.output_dir = folder_paths.get_output_directory()

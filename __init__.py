@@ -3,6 +3,7 @@
 from .modules.image_loader import coco_loader
 from .modules.load_exr import load_exr
 from .modules.saver import saver
+from .modules.autoname_saver import AutoNameSaver
 from .modules.load_exr_layer_by_name import load_exr_layer_by_name, shamble_cryptomatte
 from .modules.colorspace import colorspace
 from .modules.znormalize import znormalize
@@ -21,6 +22,7 @@ NODE_CLASS_MAPPINGS.update({
     "ImageLoader": coco_loader,
     "LoadExr": load_exr,  
     "SaverNode": saver,
+    "AutoNameSaver": AutoNameSaver,
     "LoadExrLayerByName": load_exr_layer_by_name,
     "CryptomatteLayer": shamble_cryptomatte,
     "ColorspaceNode": colorspace,
@@ -32,6 +34,7 @@ NODE_DISPLAY_NAME_MAPPINGS.update({
     "ImageLoader": "coco Loader",
     "LoadExr": "coco Load EXR", 
     "SaverNode": "coco Saver",
+    "AutoNameSaver": "Auto Name Image Saver",
     "LoadExrLayerByName": "Load EXR Layer by Name",
     "CryptomatteLayer": "Cryptomatte Layer",
     "ColorspaceNode": "Colorspace",
